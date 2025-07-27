@@ -1,0 +1,101 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:7.10.2
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash-oss:7.10.2
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+    ports:
+      - "5044:5044/tcp"   # TCP input
+      - "5044:5044/udp"   # UDP input
+      - "9600:9600"       # API
+    environment:
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana-oss:7.10.2
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-lifecycle'
+      - '--enable-feature=exemplar-storage'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Required for Docker Desktop to access host
+    depends_on:
+      - subscription-service
+      - payment-service
+
+  subscription-service:
+    build:
+      context: .
+      dockerfile: subscription-service/Dockerfile
+    ports:
+      - "8082:8080"
+    environment:
+      - LOGSTASH_HOST=logstash:5044
+      - PAYMENT_SERVICE_URL=http://payment-service:8081
+      - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+    depends_on:
+      - payment-service
+      - jaeger
+      - logstash
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+    depends_on:
+      - jaeger
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"  # Web UI
+      - "14268:14268"  # Collector HTTP
+      - "6831:6831/udp"  # Agent
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+
+networks:
+  default:
+    driver: bridge
+
+volumes:
+  elasticsearch-data:
+  prometheus-data:

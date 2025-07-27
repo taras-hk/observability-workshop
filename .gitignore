@@ -1,0 +1,42 @@
+# Binaries for programs and plugins
+# These are platform-dependent and should be built from source.
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Output of the go coverage tool
+*.out
+*.cover
+coverage.out
+
+# Dependency directory
+# Un-comment this if you are not using vendor/
+# vendor/
+
+# Local environment variables
+# Do not commit secrets or local configuration.
+.env
+.env.*
+!.env.example
+
+# IDE-specific settings
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Log files
+*.log
+
+# Profiling files
+*.prof
+*.pprof
+
+# OS-generated files
+.DS_Store
+Thumbs.db

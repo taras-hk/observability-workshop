@@ -1,0 +1,212 @@
+groups:
+- name: subscription_alerts
+  rules:
+  # V1 Alerts - Basic error tracking
+  - alert: HighErrorRate
+    expr: rate(errors_v1[5m]) > 0.01  # Lowered from 0.1 to 0.01
+    for: 30s  # Reduced from 1m to 30s
+    labels:
+      severity: warning
+    annotations:
+      summary: High error rate detected in V1 service
+      description: "V1 service experiencing high error rate ({{ $value }} errors/sec)"
+
+  - alert: CriticalErrorRate
+    expr: rate(errors_v1[5m]) > 0.05  # Lowered from 0.5 to 0.05
+    for: 30s  # Reduced from 1m to 30s
+    labels:
+      severity: critical
+    annotations:
+      summary: Critical error rate detected in V1 service
+      description: "V1 service has critical error rate ({{ $value }} errors/sec)"
+
+  - alert: ErrorSpike
+    expr: |
+      rate(errors_v1[5m]) > 2 * rate(errors_v1[1h] offset 5m)
+      and
+      rate(errors_v1[5m]) > 0
+    for: 1m  # Reduced from 2m to 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: Sudden spike in errors detected
+      description: "V1 service showing unusual error pattern. Current rate: {{ $value | printf \"%.2f\" }} errors/sec"
+
+  # V2 Alerts - Improved error tracking with some context
+  - alert: V2HighErrorRate
+    expr: rate(subscription_service_v2_errors_total[5m]) > 0.02
+    for: 45s
+    labels:
+      severity: warning
+      version: v2
+    annotations:
+      summary: "V2 High error rate detected"
+      description: "V2 service experiencing high error rate ({{ $value | printf \"%.2f\" }} errors/sec)"
+
+  - alert: V2CriticalErrorRate
+    expr: rate(subscription_service_v2_errors_total[5m]) > 0.08
+    for: 30s
+    labels:
+      severity: critical
+      version: v2
+    annotations:
+      summary: "V2 Critical error rate detected"
+      description: "V2 service has critical error rate ({{ $value | printf \"%.2f\" }} errors/sec)"
+
+  - alert: V2LatencyDegradation
+    expr: histogram_quantile(0.90, rate(subscription_service_v2_request_duration_seconds_bucket[5m])) > 0.8
+    for: 1m
+    labels:
+      severity: warning
+      version: v2
+    annotations:
+      summary: "V2 Latency degradation detected"
+      description: "V2 90th percentile latency is {{ $value | printf \"%.2f\" }}s"
+
+  - alert: V2BusinessLogicErrors
+    expr: rate(subscription_service_v2_business_errors_total[5m]) > 0.01
+    for: 1m
+    labels:
+      severity: warning
+      version: v2
+      business_impact: medium
+    annotations:
+      summary: "V2 Business logic errors increasing"
+      description: "V2 business errors at {{ $value | printf \"%.2f\" }}/sec"
+
+  - alert: V2RequestRateAnomaly
+    expr: |
+      rate(subscription_service_v2_requests_total[5m]) > 1.5 * rate(subscription_service_v2_requests_total[1h] offset 5m)
+      or
+      rate(subscription_service_v2_requests_total[5m]) < 0.5 * rate(subscription_service_v2_requests_total[1h] offset 5m)
+    for: 2m
+    labels:
+      severity: warning
+      version: v2
+    annotations:
+      summary: "V2 Request rate anomaly detected"
+      description: "V2 request rate unusual: {{ $value | printf \"%.2f\" }} req/sec"
+
+  # V3 Business-focused Alerts
+  - alert: V3PaymentFailureSpike
+    expr: rate(subscription_service_v3_payment_failures_total[5m]) > 0.01
+    for: 30s
+    labels:
+      severity: critical
+      business_impact: high
+    annotations:
+      summary: "V3 Payment failure spike detected"
+      description: "Payment failures at {{ $value | printf \"%.2f\" }}/sec - Revenue impact!"
+
+  - alert: V3BusinessErrorRate
+    expr: rate(subscription_service_v3_business_errors_total[5m]) > 0.02
+    for: 1m
+    labels:
+      severity: warning
+      business_impact: medium
+    annotations:
+      summary: "V3 Business logic errors increasing"
+      description: "Business errors at {{ $value | printf \"%.2f\" }}/sec"
+
+  - alert: V3HighLatency
+    expr: histogram_quantile(0.95, rate(subscription_service_v3_http_request_duration_seconds_bucket[5m])) > 0.5
+    for: 1m
+    labels:
+      severity: warning
+      sli_breach: true
+    annotations:
+      summary: "V3 High latency detected"
+      description: "95th percentile latency is {{ $value | printf \"%.2f\" }}s"
+
+  - alert: V3CriticalLatency
+    expr: histogram_quantile(0.95, rate(subscription_service_v3_http_request_duration_seconds_bucket[5m])) > 1.0
+    for: 30s
+    labels:
+      severity: critical
+      sli_breach: true
+    annotations:
+      summary: "V3 Critical latency breach"
+      description: "95th percentile latency is {{ $value | printf \"%.2f\" }}s - SLO breach!"
+
+  - alert: V3ErrorRateSLOBreach
+    expr: |
+      (
+        rate(subscription_service_v3_http_requests_total{status_class!="2xx"}[5m]) /
+        rate(subscription_service_v3_http_requests_total[5m])
+      ) > 0.05
+    for: 1m
+    labels:
+      severity: critical
+      slo_breach: true
+    annotations:
+      summary: "V3 Error rate SLO breach"
+      description: "Error rate {{ $value | printf \"%.2f\" }}% exceeds 5% SLO"
+
+  - alert: V3SubscriptionCreationDrop
+    expr: rate(subscription_service_v3_subscriptions_created_total[5m]) < 0.01
+    for: 2m
+    labels:
+      severity: warning
+      business_impact: high
+    annotations:
+      summary: "V3 Subscription creation rate dropped"
+      description: "New subscriptions at {{ $value | printf \"%.2f\" }}/sec - Business impact!"
+
+  # System Health Alerts
+  - alert: ServiceDown
+    expr: up{job="subscription-service"} == 0
+    for: 30s  # Reduced from 1m to 30s
+    labels:
+      severity: critical
+    annotations:
+      summary: Subscription service is down
+      description: "Subscription service has been down for more than 30 seconds"
+
+  - alert: HighMemoryUsage
+    expr: go_memstats_alloc_bytes{job="subscription-service"} > 10 * 1024 * 1024  # Lowered to 10MB
+    for: 2m  # Reduced from 5m to 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: High memory usage detected
+      description: "Subscription service using {{ $value }} bytes of memory"
+
+  # Payment service alerts for demonstration
+  - alert: PaymentServiceDown
+    expr: up{job="payment-service"} == 0
+    for: 30s
+    labels:
+      severity: critical
+    annotations:
+      summary: Payment service is down
+      description: "Payment service has been down for more than 30 seconds"
+
+  # Go runtime alerts for active demonstration
+  - alert: HighGoroutines
+    expr: go_goroutines{job="payment-service"} > 50
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: High number of goroutines
+      description: "Payment service has {{ $value }} goroutines running"
+
+  # V3 Saturation Alerts
+  - alert: V3HighConcurrency
+    expr: subscription_service_v3_http_requests_in_flight > 10
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "V3 High concurrent requests"
+      description: "{{ $value }} requests being processed concurrently"
+
+  # Generic alert that should trigger immediately when service comes back up
+  - alert: ServiceRestarted
+    expr: increase(go_memstats_alloc_bytes_total[2m]) > 0
+    for: 0s  # Immediate trigger
+    labels:
+      severity: info
+    annotations:
+      summary: Service memory allocation activity detected
+      description: "Service {{ $labels.job }} showing memory allocation activity, indicating it's running"
